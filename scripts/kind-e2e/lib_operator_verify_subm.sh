@@ -16,7 +16,6 @@ function broker_vars() {
 }
 
 function create_subm_vars() {
-    # FIXME A better name might be submariner-engine, but just kinda-matching submariner-<random hash> name used by Helm/upstream tests
     deployment_name=submariner
     operator_deployment_name=submariner-operator
     engine_deployment_name=submariner-engine
@@ -254,7 +253,7 @@ function verify_subm_engine_pod() {
   json_file=/tmp/${subm_engine_pod_name}.${cluster}.json
   kubectl get pod $subm_engine_pod_name --namespace=$subm_ns -o json | tee $json_file
 
-  validate_pod_container_equals 'image' "${subm_engine_image_repo}/submariner:local"
+  validate_pod_container_equals 'image' "${subm_engine_image_repo}/submariner-engine:local"
   validate_pod_container_has 'securityContext.capabilities.add' 'ALL'
   validate_pod_container_equals 'securityContext.allowPrivilegeEscalation' 'true'
   validate_pod_container_equals 'securityContext.privileged' 'true'

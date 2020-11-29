@@ -434,7 +434,7 @@ func newEnginePodTemplate(cr *submopv1a1.Submariner) corev1.PodTemplateSpec {
 			NodeSelector: map[string]string{"submariner.io/gateway": "true"},
 			Containers: []corev1.Container{
 				{
-					Name:            "submariner",
+					Name:            "submariner-engine",
 					Image:           getImagePath(cr, names.EngineImage),
 					ImagePullPolicy: images.GetPullPolicy(cr.Spec.Version),
 					Command:         []string{"submariner.sh"},

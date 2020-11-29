@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	submarinerName          = "submariner"
+	submarinerName          = "submariner-engine"
 	submarinerNamespace     = "submariner-operator"
 	engineDaemonSetName     = "submariner-gateway"
 	routeAgentDaemonSetName = "submariner-routeagent"
@@ -337,7 +337,8 @@ func verifyEngineDaemonSet(submariner *submariner_v1.Submariner, client controll
 	Expect(daemonSet.Spec.Template.ObjectMeta.Labels["app"]).To(Equal("submariner-engine"))
 	Expect(daemonSet.Spec.Template.Spec.NodeSelector["submariner.io/gateway"]).To(Equal("true"))
 	Expect(daemonSet.Spec.Template.Spec.Containers).To(HaveLen(1))
-	Expect(daemonSet.Spec.Template.Spec.Containers[0].Image).To(Equal(submariner.Spec.Repository + "/submariner:" + submariner.Spec.Version))
+	Expect(daemonSet.Spec.Template.Spec.Containers[0].Image).To(
+		Equal(submariner.Spec.Repository + "/submariner-engine:" + submariner.Spec.Version))
 
 	envMap := map[string]string{}
 	for _, envVar := range daemonSet.Spec.Template.Spec.Containers[0].Env {
