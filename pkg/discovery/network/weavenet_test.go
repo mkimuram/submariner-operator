@@ -22,6 +22,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	fakecorev1 "k8s.io/client-go/kubernetes/typed/core/v1/fake"
+	"k8s.io/client-go/testing"
 )
 
 var _ = Describe("discoverWeaveNetwork", func() {
@@ -32,34 +34,13 @@ var _ = Describe("discoverWeaveNetwork", func() {
 		})
 	})
 
-	When("There are weave pods but no kube api", func() {
+	When("There are weave pods", func() {
 
 		var clusterNet *ClusterNetwork
 
 		BeforeEach(func() {
 			clusterNet = testDiscoverWeaveWith(
 				fakePod("weave-net", []string{"weave-net"}, []v1.EnvVar{{Name: "IPALLOC_RANGE", Value: testPodCIDR}}),
-			)
-			Expect(clusterNet).NotTo(BeNil())
-		})
-		It("Should return the ClusterNetwork structure with PodCIDR and no ServiceCIDRs", func() {
-			Expect(clusterNet.PodCIDRs).To(Equal([]string{testPodCIDR}))
-			Expect(clusterNet.ServiceCIDRs).To(BeEmpty())
-		})
-
-		It("Should identify the networkplugin as weave-net", func() {
-			Expect(clusterNet.NetworkPlugin).To(BeIdenticalTo("weave-net"))
-		})
-	})
-
-	When("There are weave and kube api pods", func() {
-
-		var clusterNet *ClusterNetwork
-
-		BeforeEach(func() {
-			clusterNet = testDiscoverWeaveWith(
-				fakePod("weave-net", []string{"weave-net"}, []v1.EnvVar{{Name: "IPALLOC_RANGE", Value: testPodCIDR}}),
-				fakePod("kube-apiserver", []string{"kube-apiserver", "--service-cluster-ip-range=" + testServiceCIDR}, []v1.EnvVar{}),
 			)
 			Expect(clusterNet).NotTo(BeNil())
 		})
@@ -77,6 +58,12 @@ var _ = Describe("discoverWeaveNetwork", func() {
 
 func testDiscoverWeaveWith(objects ...runtime.Object) *ClusterNetwork {
 	clientSet := fake.NewSimpleClientset(objects...)
+	// this code is needed to make invalid service creation fail.
+	// see generic_test.go
+	clientSet.CoreV1().(*fakecorev1.FakeCoreV1).PrependReactor("create", "services", func(action testing.Action) (handled bool, ret runtime.Object, err error) {
+		return true, nil, errValid
+	})
+
 	clusterNet, err := discoverWeaveNetwork(clientSet)
 	Expect(err).NotTo(HaveOccurred())
 	return clusterNet

@@ -17,6 +17,12 @@ limitations under the License.
 package network
 
 import (
+	"fmt"
+	"regexp"
+
+	"github.com/pkg/errors"
+	"k8s.io/api/core/v1"
+	v1meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -25,16 +31,9 @@ func discoverGenericNetwork(clientSet kubernetes.Interface) (*ClusterNetwork, er
 		NetworkPlugin: "generic",
 	}
 
-	podIPRange, err := findPodIPRangeKubeController(clientSet)
+	podIPRange, err := findPodIPRange(clientSet)
 	if err != nil {
 		return nil, err
-	}
-
-	if podIPRange == "" {
-		podIPRange, err = findPodIPRangeKubeProxy(clientSet)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	if podIPRange != "" {
@@ -62,13 +61,60 @@ func discoverGenericNetwork(clientSet kubernetes.Interface) (*ClusterNetwork, er
 }
 
 func findClusterIPRange(clientSet kubernetes.Interface) (string, error) {
-	return findPodCommandParameter(clientSet, "component=kube-apiserver", "--service-cluster-ip-range")
+	// find service cidr based on https://stackoverflow.com/questions/44190607/how-do-you-find-the-cluster-service-cidr-of-a-kubernetes-cluster
+	invalidSvcSpec := &v1.Service{
+		ObjectMeta: v1meta.ObjectMeta{
+			Name: "invalidSvc",
+		},
+		Spec: v1.ServiceSpec{
+			ClusterIP: "1.1.1.1",
+			Ports:     nil,
+		},
+	}
+	_, err := clientSet.CoreV1().Services("submariner-operator").Create(invalidSvcSpec)
+
+	// creating invalid svc didn't fail as expected
+	if err == nil {
+		return "", fmt.Errorf("creating invalid service(%v) didn't fail", invalidSvcSpec)
+	}
+
+	return parseToServiceCidr(err.Error())
 }
 
-func findPodIPRangeKubeController(clientSet kubernetes.Interface) (string, error) {
-	return findPodCommandParameter(clientSet, "component=kube-controller-manager", "--cluster-cidr")
+func parseToServiceCidr(msg string) (string, error) {
+	// expected msg is below:
+	//   "The Service \"tst\" is invalid: spec.clusterIPs: Invalid value: []string{\"1.1.1.1\"}:
+	//   failed to allocated ip:1.1.1.1 with error:provided IP is not in the valid range.
+	//   The range of valid IPs is 10.45.0.0/16"
+	// expected matched string is below:
+	//   10.45.0.0/16
+	re := regexp.MustCompile(".*valid IPs is (.*)$")
+
+	match := re.FindStringSubmatch(msg)
+	if match == nil {
+		return "", fmt.Errorf("parsing (%s) failed. it doesn't match with %v", msg, re)
+	}
+
+	// returns first matching string
+	return match[1], nil
 }
 
-func findPodIPRangeKubeProxy(clientSet kubernetes.Interface) (string, error) {
-	return findPodCommandParameter(clientSet, "component=kube-proxy", "--cluster-cidr")
+func findPodIPRange(clientSet kubernetes.Interface) (string, error) {
+	nodes, err := clientSet.CoreV1().Nodes().List(v1meta.ListOptions{})
+
+	if err != nil {
+		return "", errors.WithMessagef(err, "error listing nodes")
+	}
+
+	return parseToPodCidr(nodes.Items)
+}
+
+func parseToPodCidr(nodes []v1.Node) (string, error) {
+	for _, node := range nodes {
+		if node.Spec.PodCIDR != "" {
+			return node.Spec.PodCIDR, nil
+		}
+	}
+
+	return "", fmt.Errorf("no node with Spec.PodCIDR found")
 }

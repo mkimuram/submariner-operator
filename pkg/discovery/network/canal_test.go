@@ -21,27 +21,41 @@ import (
 	v1meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	fakecorev1 "k8s.io/client-go/kubernetes/typed/core/v1/fake"
+	"k8s.io/client-go/testing"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("discoverCanalFlannelNetwork", func() {
-	When("There are no generic k8s pods to look at", func() {
-		It("Should return still return the pod CIDR", func() {
-			clusterNet := testDiscoverCanalFlannelWith(&canalFlannelCfgMap)
+	When("There is no canalFlannelCfgMap", func() {
+		It("Should return nil clusterNet for discoverCanalFlannelNetwork", func() {
+			clusterNet := testDiscoverCanalFlannelWith(
+				fakeNode("node1", testPodCIDR),
+			)
+			Expect(clusterNet).To(BeNil())
+		})
+	})
+	When("There is canalFlannelCfgMap", func() {
+		It("Should return right clusterNet for discoverCanalFlannelNetwork", func() {
+			clusterNet := testDiscoverCanalFlannelWith(
+				&canalFlannelCfgMap,
+				fakeNode("node1", testPodCIDR),
+			)
 			Expect(clusterNet).NotTo(BeNil())
 			Expect(clusterNet.NetworkPlugin).To(Equal("canal-flannel"))
 			Expect(clusterNet.PodCIDRs).To(Equal([]string{testCannalFlannelPodCIDR}))
+			Expect(clusterNet.ServiceCIDRs).To(Equal([]string{testServiceCIDR}))
 		})
 	})
 
-	When("There is a kubeapi pod at least ", func() {
+	When("There is canalFlannelCfgMap", func() {
 
 		It("Should return the ClusterNetwork structure with ServiceCIDRs too", func() {
 			clusterNet := testDiscoverWith(
 				&canalFlannelCfgMap,
-				fakePod("kube-apiserver", []string{"kube-apiserver", "--service-cluster-ip-range=" + testServiceCIDR}, []v1.EnvVar{}),
+				fakeNode("node1", testPodCIDR),
 			)
 			Expect(clusterNet).NotTo(BeNil())
 			Expect(clusterNet.NetworkPlugin).To(Equal("canal-flannel"))
@@ -54,6 +68,12 @@ var _ = Describe("discoverCanalFlannelNetwork", func() {
 
 func testDiscoverCanalFlannelWith(objects ...runtime.Object) *ClusterNetwork {
 	clientSet := fake.NewSimpleClientset(objects...)
+	// this code is needed to make invalid service creation fail.
+	// see generic_test.go
+	clientSet.CoreV1().(*fakecorev1.FakeCoreV1).PrependReactor("create", "services", func(action testing.Action) (handled bool, ret runtime.Object, err error) {
+		return true, nil, errValid
+	})
+
 	clusterNet, err := discoverCanalFlannelNetwork(clientSet)
 	Expect(err).NotTo(HaveOccurred())
 	return clusterNet
@@ -61,6 +81,12 @@ func testDiscoverCanalFlannelWith(objects ...runtime.Object) *ClusterNetwork {
 
 func testDiscoverWith(objects ...runtime.Object) *ClusterNetwork {
 	clientSet := fake.NewSimpleClientset(objects...)
+	// this code is needed to make invalid service creation fail.
+	// see generic_test.go
+	clientSet.CoreV1().(*fakecorev1.FakeCoreV1).PrependReactor("create", "services", func(action testing.Action) (handled bool, ret runtime.Object, err error) {
+		return true, nil, errValid
+	})
+
 	clusterNet, err := Discover(nil, clientSet, nil, "")
 	Expect(err).NotTo(HaveOccurred())
 	return clusterNet

@@ -67,3 +67,16 @@ func fakeService(namespace, name, component string) *v1.Service {
 		Spec: v1.ServiceSpec{},
 	}
 }
+
+func fakeNode(name, podCIDR string) *v1.Node {
+	spec := v1.NodeSpec{}
+	if podCIDR != "" {
+		spec.PodCIDR = podCIDR
+	}
+	return &v1.Node{
+		ObjectMeta: v1meta.ObjectMeta{
+			Name: name,
+		},
+		Spec: spec,
+	}
+}
